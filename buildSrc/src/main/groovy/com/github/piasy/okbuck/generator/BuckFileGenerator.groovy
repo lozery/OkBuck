@@ -27,6 +27,7 @@ package com.github.piasy.okbuck.generator
 import com.android.build.gradle.internal.dsl.ProductFlavor
 import com.android.build.gradle.internal.dsl.SigningConfig
 import com.android.builder.model.ClassField
+import com.github.piasy.okbuck.analyzer.DependencyAnalyzer
 import com.github.piasy.okbuck.helper.AndroidProjectHelper
 import org.apache.commons.io.IOUtils
 import org.gradle.api.NamedDomainObjectContainer
@@ -35,10 +36,7 @@ import org.gradle.api.UnknownDomainObjectException
 
 class BuckFileGenerator {
     private final Project mRootProject
-    private final Map<String, Set<File>> mAllSubProjectsExternalDependencies
-    private final Map<String, Set<Project>> mAllSubProjectsInternalDependencies
-    private final Map<String, Set<File>> mAllSubProjectsAptDependencies
-    private final Map<String, Set<String>> mAnnotationProcessors
+    private final DependencyAnalyzer mDependencyAnalyzer
     private final File mThirdPartyLibsDir
     private final Map<String, String> mResPackages
     private final boolean mOverwrite
@@ -47,18 +45,12 @@ class BuckFileGenerator {
     private final String mBuildVariant
 
     public BuckFileGenerator(
-            Project rootProject, Map<String, Set<File>> allSubProjectsExternalDependencies,
-            Map<String, Set<Project>> allSubProjectsInternalDependencies,
-            Map<String, Set<File>> allSubProjectsAptDependencies,
-            Map<String, Set<String>> annotationProcessors, File thirdPartyLibsDir,
+            Project rootProject, DependencyAnalyzer dependencyAnalyzer, File thirdPartyLibsDir,
             Map<String, String> resPackages, boolean overwrite, String keystoreDir,
             String signConfigName, String buildVariant
     ) {
         mRootProject = rootProject
-        mAllSubProjectsExternalDependencies = allSubProjectsExternalDependencies
-        mAllSubProjectsInternalDependencies = allSubProjectsInternalDependencies
-        mAllSubProjectsAptDependencies = allSubProjectsAptDependencies
-        mAnnotationProcessors = annotationProcessors
+        mDependencyAnalyzer = dependencyAnalyzer
         mThirdPartyLibsDir = thirdPartyLibsDir
         mResPackages = resPackages
         mOverwrite = overwrite
@@ -80,16 +72,17 @@ class BuckFileGenerator {
                 subProjectLibsDir.mkdirs()
             }
             copyDependencies(subProjectLibsDir,
-                    mAllSubProjectsExternalDependencies.get(project.name))
+                    mDependencyAnalyzer.allSubProjectsExternalDependenciesExcluded.get(
+                            project.name))
 
             int type = AndroidProjectHelper.getSubProjectType(project)
             switch (type) {
                 case AndroidProjectHelper.JAVA_LIB_PROJECT:
-                    genJavaProjectThirdPartyLibsBUCK(subProjectLibsDir)
+                    generateJavaProjectThirdPartyLibsBUCK(subProjectLibsDir)
                     break
                 case AndroidProjectHelper.ANDROID_LIB_PROJECT:
                 case AndroidProjectHelper.ANDROID_APP_PROJECT:
-                    genAndroidProjectThirdPartyLibsBUCK(subProjectLibsDir)
+                    generateAndroidProjectThirdPartyLibsBUCK(subProjectLibsDir)
                     break
             }
 
@@ -98,8 +91,9 @@ class BuckFileGenerator {
             if (!aptDir.exists()) {
                 aptDir.mkdirs()
             }
-            copyDependencies(aptDir, mAllSubProjectsAptDependencies.get(project.name))
-            genAndroidProjectThirdPartyLibsBUCK(aptDir)
+            copyDependencies(aptDir,
+                    mDependencyAnalyzer.allSubProjectsAptDependencies.get(project.name))
+            generateAndroidProjectThirdPartyLibsBUCK(aptDir)
         }
 
         // create BUCK file for each sub project
@@ -112,9 +106,11 @@ class BuckFileGenerator {
                 int type = AndroidProjectHelper.getSubProjectType(project)
                 switch (type) {
                     case AndroidProjectHelper.JAVA_LIB_PROJECT:
-                        genJavaLibSubProjectBUCK(project,
-                                mAllSubProjectsInternalDependencies.get(project.name),
-                                mAnnotationProcessors.get(project.name))
+                        // java library can only depend on jar, never aar
+                        generateJavaLibSubProjectBUCK(project,
+                                mDependencyAnalyzer.allSubProjectsInternalDependenciesExcluded.get(
+                                        project.name),
+                                mDependencyAnalyzer.annotationProcessors.get(project.name))
                         break
                     case AndroidProjectHelper.ANDROID_LIB_PROJECT:
                         if (mResPackages.get(project.name) == null ||
@@ -122,11 +118,8 @@ class BuckFileGenerator {
                             throw new IllegalArgumentException(
                                     "resPackages entry for ${project.name} must be set")
                         } else {
-                            genAndroidLibSubProjectBUCK(project,
-                                    mAllSubProjectsInternalDependencies.get(project.name),
-                                    mAllSubProjectsExternalDependencies.get(project.name),
-                                    mResPackages.get(project.name),
-                                    mAnnotationProcessors.get(project.name))
+                            generateAndroidLibSubProjectBUCK(project,
+                                    mResPackages.get(project.name))
                         }
                         break
                     case AndroidProjectHelper.ANDROID_APP_PROJECT:
@@ -135,12 +128,9 @@ class BuckFileGenerator {
                             throw new IllegalArgumentException(
                                     "resPackages entry for ${project.name} must be set")
                         } else {
-                            genAndroidAppSubProjectBUCK(project,
-                                    mAllSubProjectsInternalDependencies.get(project.name),
-                                    mAllSubProjectsExternalDependencies.get(project.name),
-                                    mResPackages.get(project.name),
-                                    mAnnotationProcessors.get(project.name), mKeystoreDir,
-                                    mSignConfigName, mBuildVariant)
+                            generateAndroidAppSubProjectBUCK(project,
+                                    mResPackages.get(project.name), mKeystoreDir, mSignConfigName,
+                                    mBuildVariant)
                         }
                         break
                 }
@@ -148,15 +138,15 @@ class BuckFileGenerator {
         }
     }
 
-    private static copyDependencies(File dir, Set<File> deps) {
-        for (File dep : deps) {
+    private static copyDependencies(File dir, Set<File> depsExcluded) {
+        for (File dep : depsExcluded) {
             println "copying ${dep.absolutePath} into .okbuck/${dir.name}"
             IOUtils.copy(new FileInputStream(dep), new FileOutputStream(
                     new File(dir.absolutePath + File.separator + dep.name)))
         }
     }
 
-    private static void genJavaProjectThirdPartyLibsBUCK(File thirdPartyLibsPath) {
+    private static void generateJavaProjectThirdPartyLibsBUCK(File thirdPartyLibsPath) {
         println "generating third-party-libs BUCK in .okbuck/${thirdPartyLibsPath.name}"
         PrintWriter printWriter = new PrintWriter(
                 new FileOutputStream("${thirdPartyLibsPath.absolutePath}${File.separator}BUCK"))
@@ -185,7 +175,7 @@ class BuckFileGenerator {
         printWriter.close()
     }
 
-    private static void genAndroidProjectThirdPartyLibsBUCK(File thirdPartyLibsPath) {
+    private static void generateAndroidProjectThirdPartyLibsBUCK(File thirdPartyLibsPath) {
         println "generating third-party-libs BUCK in .okbuck/${thirdPartyLibsPath.name}"
         PrintWriter printWriter = new PrintWriter(
                 new FileOutputStream("${thirdPartyLibsPath.absolutePath}${File.separator}BUCK"))
@@ -234,104 +224,25 @@ class BuckFileGenerator {
         printWriter.close()
     }
 
-    private void genAndroidAppSubProjectBUCK(
-            Project project, Set<Project> internalDeps, Set<File> externalDeps, String resPackage,
-            Set<String> annotationProcessors,
-            String keystoreDir, String signConfigName, String buildVariant
+    private void generateAndroidAppSubProjectBUCK(
+            Project project, String resPackage, String keystoreDir, String signConfigName,
+            String buildVariant
     ) {
         println "generating sub project ${project.name}'s BUCK"
         PrintWriter printWriter = new PrintWriter(
                 new FileOutputStream("${project.projectDir.absolutePath}${File.separator}BUCK"))
 
-        genSignConfigs(project,
+        generateSignConfigsRule(project,
                 new File(project.rootProject.projectDir.absolutePath + File.separator +
                         keystoreDir + File.separator + project.name), signConfigName)
 
-        printWriter.println("android_resource(")
-        printWriter.println("\tname = 'res',")
-        printWriter.println("\tres = 'src/main/res',")
-        File assets = new File("${project.projectDir.absolutePath}/src/main/assets")
-        if (assets.exists()) {
-            println "sub project ${project.name}'s assets exist include it"
-            printWriter.println("\tassets = 'src/main/assets',")
-        } else {
-            println "sub project ${project.name}'s assets not exist"
-        }
-        printWriter.println("\tpackage = '${resPackage}',")
-        printWriter.println("\tdeps = [")
-        for (Project internalDep : internalDeps) {
-            if (includeInternalSubProjectResDep(internalDep)) {
-                printWriter.println("\t\t'/${getPathDiff(mRootProject, internalDep)}:res',")
-            }
-        }
-        printWriter.println()
-        for (File externalDep : externalDeps) {
-            if (externalDep.name.endsWith(".aar")) {
-                printWriter.println("\t\t'//.okbuck/${project.name}:aar__${externalDep.name}',")
-            }
-        }
-        printWriter.println("\t],")
-        printWriter.println("\tvisibility = ['//${project.name}:src'],")
-        printWriter.println(")")
-        printWriter.println()
-
-        printWriter.println("android_build_config(")
-        printWriter.println("\tname = 'build_config',")
-        printWriter.println("\tpackage = '${resPackage}',")
-        printWriter.println("\tvalues = [")
-        List<String> buildConfigFields = getDefaultConfigBuildConfigField(project)
-        for (String field : buildConfigFields) {
-            printWriter.println("\t\t'${field}',")
-        }
-        printWriter.println("\t],")
-        printWriter.println("\tvisibility = ['//${project.name}:src'],")
-        printWriter.println(")")
-        printWriter.println()
-
-        printWriter.println("android_library(")
-        printWriter.println("\tname = 'src',")
-        printWriter.println("\tsrcs = glob(['src/main/java/**/*.java']),")
-        printWriter.println("\tdeps = [")
-        printWriter.println("\t\t':res',")
-        printWriter.println("\t\t':build_config',")
-        printWriter.println()
-        for (Project internalDep : internalDeps) {
-            printWriter.println("\t\t'/${getPathDiff(mRootProject, internalDep)}:src',")
-            if (includeInternalSubProjectResDep(internalDep)) {
-                printWriter.println("\t\t'/${getPathDiff(mRootProject, internalDep)}:res',")
-            }
-        }
-        printWriter.println()
-        for (File externalDep : externalDeps) {
-            if (externalDep.name.endsWith(".aar")) {
-                printWriter.println("\t\t'//.okbuck/${project.name}:aar__${externalDep.name}',")
-            }
-        }
-        printWriter.println("\t\t'//.okbuck/${project.name}:all-jars',")
-        printWriter.println("\t],")
-
-        printWriter.println("\tannotation_processors = [")
-        for (String processor : annotationProcessors) {
-            printWriter.println("\t\t'${processor}',")
-        }
-        printWriter.println("\t],")
-        printWriter.println("\tannotation_processor_deps = [")
-        for (Project internalDep : internalDeps) {
-            printWriter.println("\t\t'/${getPathDiff(mRootProject, internalDep)}:src',")
-        }
-        printWriter.println("\t\t'//.okbuck/${project.name}:all-jars',")
-        printWriter.println("\t\t'//.okbuck/${project.name}:all-aars',")
-        printWriter.println("\t\t'//.okbuck/annotation_processor_deps:all-jars',")
-        printWriter.println("\t\t'//.okbuck/annotation_processor_deps:all-aars',")
-        printWriter.println("\t],")
-
-        printWriter.println(")")
-        printWriter.println()
+        generateAppLibCommonPart(project, printWriter, resPackage)
 
         printWriter.println("android_binary(")
         printWriter.println("\tname = 'bin',")
         printWriter.println("\tmanifest = 'src/main/AndroidManifest.xml',")
-        printWriter.println("\tkeystore = '//${keystoreDir}/${project.name}:${project.name}_keystore',")
+        printWriter.println(
+                "\tkeystore = '//${keystoreDir}/${project.name}:${project.name}_keystore',")
         // not included until proguard support
         //printWriter.println("\tpackage_type = '${buildVariant}',")
         printWriter.println("\tdeps = [")
@@ -349,192 +260,23 @@ class BuckFileGenerator {
         printWriter.close()
     }
 
-    private static boolean includeInternalSubProjectResDep(Project internalDep) {
-        int type = AndroidProjectHelper.getSubProjectType(internalDep)
-        return type == AndroidProjectHelper.ANDROID_APP_PROJECT ||
-                type ==
-                AndroidProjectHelper.ANDROID_LIB_PROJECT
-    }
-
-    private static void genSignConfigs(Project project, File dir, String signConfigName) {
-        if (!dir.exists()) {
-            dir.mkdirs()
-        }
-        try {
-            project.extensions.getByName("android").metaPropertyValues.each { prop ->
-                if ("signingConfigs".equals(prop.name) && NamedDomainObjectContainer.class.
-                        isAssignableFrom(prop.type)) {
-                    NamedDomainObjectContainer<SigningConfig> signConfig = (NamedDomainObjectContainer<SigningConfig>) prop.value
-                    SigningConfig config
-                    if (signConfig.size() == 1) {
-                        config = signConfig.getAt(0)
-                    } else {
-                        config = signConfig.getByName(signConfigName)
-                    }
-                    IOUtils.copy(new FileInputStream(config.getStoreFile()),
-                            new FileOutputStream(new File(
-                                    "${dir.absolutePath}${File.separator}${project.name}.keystore")))
-                    PrintWriter writer = new PrintWriter(new FileOutputStream(new File(
-                            "${dir.absolutePath}${File.separator}${project.name}.keystore.properties")))
-                    writer.println("key.store=${project.name}.keystore")
-                    writer.println("key.alias=${config.getKeyAlias()}")
-                    writer.println("key.store.password=${config.getStorePassword()}")
-                    writer.println("key.alias.password=${config.getKeyPassword()}")
-                    writer.close()
-
-                    writer = new PrintWriter(new FileOutputStream(new File(
-                            "${dir.absolutePath}${File.separator}BUCK")))
-                    writer.println("keystore(")
-                    writer.println("\tname = '${project.name}_keystore',")
-                    writer.println("\tstore = '${project.name}.keystore',")
-                    writer.println("\tproperties = '${project.name}.keystore.properties',")
-                    writer.println("\tvisibility = ['//${project.name}:bin'],")
-                    writer.println(")")
-                    writer.close()
-                }
-            }
-        } catch (UnknownDomainObjectException e) {
-            throw new IllegalStateException(
-                    "Can not figure out sign config, please make sure you have only one sign config in your build.gradle, or set signConfigName in okbuck dsl.")
-        } catch (Exception e) {
-            throw new IllegalStateException("get ${project.name}'s sign config fail!")
-        }
-    }
-
-    private void genAndroidLibSubProjectBUCK(
-            Project project, Set<Project> internalDeps, Set<File> externalDeps, String resPackage,
-            Set<String> annotationProcessors
-    ) {
+    private void generateAndroidLibSubProjectBUCK(Project project, String resPackage) {
         println "generating sub project ${project.name}'s BUCK"
         PrintWriter printWriter = new PrintWriter(
                 new FileOutputStream("${project.projectDir.absolutePath}${File.separator}BUCK"))
-        printWriter.println("android_resource(")
-        printWriter.println("\tname = 'res',")
-        printWriter.println("\tres = 'src/main/res',")
-        File assets = new File("${project.projectDir.absolutePath}/src/main/assets")
-        if (assets.exists()) {
-            println "sub project ${project.name}'s assets exist include it"
-            printWriter.println("\tassets = 'src/main/assets',")
-        } else {
-            println "sub project ${project.name}'s assets not exist"
-        }
-        printWriter.println("\tpackage = '${resPackage}',")
-        printWriter.println("\tdeps = [")
-        for (Project internalDep : internalDeps) {
-            if (includeInternalSubProjectResDep(internalDep)) {
-                printWriter.println("\t\t'/${getPathDiff(mRootProject, internalDep)}:res',")
-            }
-        }
-        printWriter.println()
-        for (File externalDep : externalDeps) {
-            if (externalDep.name.endsWith(".aar")) {
-                printWriter.println("\t\t'//.okbuck/${project.name}:aar__${externalDep.name}',")
-            }
-        }
-        printWriter.println("\t],")
-        printWriter.println("\tvisibility = ['PUBLIC'],")
-        printWriter.println(")")
-        printWriter.println()
 
-        printWriter.println("android_build_config(")
-        printWriter.println("\tname = 'build_config',")
-        printWriter.println("\tpackage = '${resPackage}',")
-        printWriter.println("\tvalues = [")
-        List<String> buildConfigFields = getDefaultConfigBuildConfigField(project)
-        for (String field : buildConfigFields) {
-            printWriter.println("\t\t'${field}',")
-        }
-        printWriter.println("\t],")
-        printWriter.println("\tvisibility = ['//${project.name}:src'],")
-        printWriter.println(")")
-        printWriter.println()
-
-        printWriter.println("android_library(")
-        printWriter.println("\tname = 'src',")
-        printWriter.println("\tsrcs = glob(['src/main/java/**/*.java']),")
-        printWriter.println("\tdeps = [")
-        printWriter.println("\t\t':res',")
-        printWriter.println("\t\t':build_config',")
-        printWriter.println()
-        for (Project internalDep : internalDeps) {
-            printWriter.println("\t\t'/${getPathDiff(mRootProject, internalDep)}:src',")
-            if (includeInternalSubProjectResDep(internalDep)) {
-                printWriter.println("\t\t'/${getPathDiff(mRootProject, internalDep)}:res',")
-            }
-        }
-        printWriter.println()
-        for (File externalDep : externalDeps) {
-            if (externalDep.name.endsWith(".aar")) {
-                printWriter.println("\t\t'//.okbuck/${project.name}:aar__${externalDep.name}',")
-            }
-        }
-        printWriter.println("\t\t'//.okbuck/${project.name}:all-jars',")
-        printWriter.println("\t],")
-        printWriter.println("\texported_deps = [")
-        for (Project internalDep : internalDeps) {
-            printWriter.println("\t\t'/${getPathDiff(mRootProject, internalDep)}:src',")
-        }
-        printWriter.println()
-        for (File externalDep : externalDeps) {
-            if (externalDep.name.endsWith(".aar")) {
-                printWriter.println("\t\t'//.okbuck/${project.name}:aar__${externalDep.name}',")
-            }
-        }
-        printWriter.println("\t\t'//.okbuck/${project.name}:all-jars',")
-        printWriter.println("\t],")
-        printWriter.println("\tvisibility = ['PUBLIC'],")
-
-        printWriter.println("\tannotation_processors = [")
-        for (String processor : annotationProcessors) {
-            printWriter.println("\t\t'${processor}',")
-        }
-        printWriter.println("\t],")
-        printWriter.println("\tannotation_processor_deps = [")
-        for (Project internalDep : internalDeps) {
-            printWriter.println("\t\t'/${getPathDiff(mRootProject, internalDep)}:src',")
-        }
-        printWriter.println("\t\t'//.okbuck/${project.name}:all-jars',")
-        printWriter.println("\t\t'//.okbuck/${project.name}:all-aars',")
-        printWriter.println("\t\t'//.okbuck/annotation_processor_deps:all-jars',")
-        printWriter.println("\t\t'//.okbuck/annotation_processor_deps:all-aars',")
-        printWriter.println("\t],")
-
-        printWriter.println(")")
-        printWriter.println()
+        generateAppLibCommonPart(project, printWriter, resPackage)
 
         printWriter.println("project_config(")
         printWriter.println("\tsrc_target = '//${project.name}:src',")
         printWriter.println("\tsrc_roots = ['src/main/java'],")
         printWriter.println(")")
+        printWriter.println()
 
         printWriter.close()
     }
 
-    private static List<String> getDefaultConfigBuildConfigField(Project project) {
-        println "get ${project.name}'s buildConfigField:"
-        List<String> ret = new ArrayList<>()
-        int type = AndroidProjectHelper.getSubProjectType(project)
-        if (type == AndroidProjectHelper.ANDROID_LIB_PROJECT ||
-                type ==
-                AndroidProjectHelper.ANDROID_APP_PROJECT) {
-            try {
-                project.extensions.getByName("android").metaPropertyValues.each { prop ->
-                    if ("defaultConfig".equals(prop.name) && ProductFlavor.class.isAssignableFrom(
-                            prop.type)) {
-                        ProductFlavor flavor = (ProductFlavor) prop.value
-                        for (ClassField classField : flavor.buildConfigFields.values()) {
-                            ret.add("${classField.type} ${classField.name} = ${classField.value}")
-                        }
-                    }
-                }
-            } catch (Exception e) {
-                println "get ${project.name}'s buildConfigField fail!"
-            }
-        }
-        return ret
-    }
-
-    private void genJavaLibSubProjectBUCK(
+    private void generateJavaLibSubProjectBUCK(
             Project project, Set<Project> internalDeps, Set<String> annotationProcessors
     ) {
         println "generating sub project ${project.name}'s BUCK"
@@ -581,7 +323,217 @@ class BuckFileGenerator {
         printWriter.close()
     }
 
+    private static void generateSignConfigsRule(Project project, File dir, String signConfigName) {
+        if (!dir.exists()) {
+            dir.mkdirs()
+        }
+        try {
+            project.extensions.getByName("android").metaPropertyValues.each { prop ->
+                if ("signingConfigs".equals(prop.name) && NamedDomainObjectContainer.class.
+                        isAssignableFrom(prop.type)) {
+                    NamedDomainObjectContainer<SigningConfig> signConfig = (NamedDomainObjectContainer<SigningConfig>) prop.value
+                    SigningConfig config
+                    if (signConfig.size() == 1) {
+                        config = signConfig.getAt(0)
+                    } else {
+                        config = signConfig.getByName(signConfigName)
+                    }
+                    IOUtils.copy(new FileInputStream(config.getStoreFile()),
+                            new FileOutputStream(new File(
+                                    "${dir.absolutePath}${File.separator}${project.name}.keystore")))
+                    PrintWriter writer = new PrintWriter(new FileOutputStream(new File(
+                            "${dir.absolutePath}${File.separator}${project.name}.keystore.properties")))
+                    writer.println("key.store=${project.name}.keystore")
+                    writer.println("key.alias=${config.getKeyAlias()}")
+                    writer.println("key.store.password=${config.getStorePassword()}")
+                    writer.println("key.alias.password=${config.getKeyPassword()}")
+                    writer.close()
+
+                    writer = new PrintWriter(new FileOutputStream(new File(
+                            "${dir.absolutePath}${File.separator}BUCK")))
+                    writer.println("keystore(")
+                    writer.println("\tname = '${project.name}_keystore',")
+                    writer.println("\tstore = '${project.name}.keystore',")
+                    writer.println("\tproperties = '${project.name}.keystore.properties',")
+                    writer.println("\tvisibility = ['//${project.name}:bin'],")
+                    writer.println(")")
+                    writer.close()
+                }
+            }
+        } catch (UnknownDomainObjectException e) {
+            throw new IllegalStateException(
+                    "Can not figure out sign config, please make sure you have only one sign config in your build.gradle, or set signConfigName in okbuck dsl.")
+        } catch (Exception e) {
+            throw new IllegalStateException("get ${project.name}'s sign config fail!")
+        }
+    }
+
+    private void generateAppLibCommonPart(
+            Project project, PrintWriter printWriter, String resPackage
+    ) {
+        File resDir = new File("${project.projectDir.absolutePath}/src/main/res")
+        boolean resExists = resDir.exists()
+        if (resExists) {
+            generateResRule(printWriter, project, resPackage,
+                    mDependencyAnalyzer.allSubProjectsInternalDependencies.get(project.name),
+                    mDependencyAnalyzer.allSubProjectsExternalDependencies.get(project.name))
+        }
+
+        generateBuildConfigRule(printWriter, resPackage, project)
+
+        printWriter.println("android_library(")
+        printWriter.println("\tname = 'src',")
+        printWriter.println("\tsrcs = glob(['src/main/java/**/*.java']),")
+        printWriter.println("\tdeps = [")
+        if (resExists) {
+            printWriter.println("\t\t':res',")
+        }
+        printWriter.println("\t\t':build_config',")
+        printWriter.println()
+        for (Project internalDep :
+                mDependencyAnalyzer.allSubProjectsInternalDependencies.get(project.name)) {
+            File internalDepResDir = new File("${internalDep.projectDir.absolutePath}/src/main/res")
+            if (includeInternalSubProjectResDep(internalDep) && internalDepResDir.exists()) {
+                printWriter.println("\t\t'/${getPathDiff(mRootProject, internalDep)}:res',")
+            }
+        }
+        for (Project internalDep :
+                mDependencyAnalyzer.allSubProjectsInternalDependenciesExcluded.get(project.name)) {
+            printWriter.println("\t\t'/${getPathDiff(mRootProject, internalDep)}:src',")
+        }
+        printWriter.println()
+        for (File externalDep :
+                mDependencyAnalyzer.allSubProjectsExternalDependencies.get(project.name)) {
+            if (externalDep.name.endsWith(".aar")) {
+                printWriter.println("\t\t'//.okbuck${getSourceDependsProjectName(externalDep)}:aar__${externalDep.name}',")
+            }
+        }
+        printWriter.println("\t\t'//.okbuck/${project.name}:all-jars',")
+        printWriter.println("\t],")
+        printWriter.println("\texported_deps = [")
+        for (Project internalDep :
+                mDependencyAnalyzer.allSubProjectsInternalDependenciesExcluded.get(project.name)) {
+            printWriter.println("\t\t'/${getPathDiff(mRootProject, internalDep)}:src',")
+        }
+        printWriter.println()
+        printWriter.println("\t\t'//.okbuck/${project.name}:all-jars',")
+        printWriter.println("\t],")
+        printWriter.println("\tvisibility = ['PUBLIC'],")
+
+        generateAnnotationProcessorPart(printWriter,
+                mDependencyAnalyzer.annotationProcessors.get(project.name), project)
+
+        printWriter.println(")")
+        printWriter.println()
+    }
+
+    private static void generateBuildConfigRule(
+            PrintWriter printWriter, String resPackage, Project project
+    ) {
+        printWriter.println("android_build_config(")
+        printWriter.println("\tname = 'build_config',")
+        printWriter.println("\tpackage = '${resPackage}',")
+        printWriter.println("\tvalues = [")
+        List<String> buildConfigFields = getDefaultConfigBuildConfigField(project)
+        for (String field : buildConfigFields) {
+            printWriter.println("\t\t'${field}',")
+        }
+        printWriter.println("\t],")
+        printWriter.println("\tvisibility = ['//${project.name}:src'],")
+        printWriter.println(")")
+        printWriter.println()
+    }
+
+    private static List<String> getDefaultConfigBuildConfigField(Project project) {
+        println "get ${project.name}'s buildConfigField:"
+        List<String> ret = new ArrayList<>()
+        int type = AndroidProjectHelper.getSubProjectType(project)
+        if (type == AndroidProjectHelper.ANDROID_LIB_PROJECT ||
+                type ==
+                AndroidProjectHelper.ANDROID_APP_PROJECT) {
+            try {
+                project.extensions.getByName("android").metaPropertyValues.each { prop ->
+                    if ("defaultConfig".equals(prop.name) && ProductFlavor.class.isAssignableFrom(
+                            prop.type)) {
+                        ProductFlavor flavor = (ProductFlavor) prop.value
+                        for (ClassField classField : flavor.buildConfigFields.values()) {
+                            ret.add("${classField.type} ${classField.name} = ${classField.value}")
+                        }
+                    }
+                }
+            } catch (Exception e) {
+                println "get ${project.name}'s buildConfigField fail!"
+            }
+        }
+        return ret
+    }
+
+    private void generateResRule(
+            PrintWriter printWriter, Project project, String resPackage, Set<Project> internalDeps,
+            Set<File> externalDeps
+    ) {
+        printWriter.println("android_resource(")
+        printWriter.println("\tname = 'res',")
+        printWriter.println("\tres = 'src/main/res',")
+        File assets = new File("${project.projectDir.absolutePath}/src/main/assets")
+        if (assets.exists()) {
+            println "sub project ${project.name}'s assets exist include it"
+            printWriter.println("\tassets = 'src/main/assets',")
+        } else {
+            println "sub project ${project.name}'s assets not exist"
+        }
+        printWriter.println("\tpackage = '${resPackage}',")
+        printWriter.println("\tdeps = [")
+        for (Project internalDep : internalDeps) {
+            File internalDepResDir = new File("${internalDep.projectDir.absolutePath}/src/main/res")
+            if (includeInternalSubProjectResDep(internalDep) && internalDepResDir.exists()) {
+                printWriter.println("\t\t'/${getPathDiff(mRootProject, internalDep)}:res',")
+            }
+        }
+        printWriter.println()
+        for (File externalDep : externalDeps) {
+            if (externalDep.name.endsWith(".aar")) {
+                printWriter.println("\t\t'//.okbuck${getSourceDependsProjectName(externalDep)}:aar__${externalDep.name}',")
+            }
+        }
+        printWriter.println("\t],")
+        printWriter.println("\tvisibility = ['PUBLIC'],")
+        printWriter.println(")")
+        printWriter.println()
+    }
+
+    private String getSourceDependsProjectName(File externalDep) {
+        for (Project project : mRootProject.subprojects) {
+            if (mDependencyAnalyzer.allSubProjectsExternalDependenciesExcluded.get(project.name).contains(externalDep)) {
+                return getPathDiff(mRootProject, project)
+            }
+        }
+        throw new IllegalArgumentException("This external dep ${externalDep.absolutePath} doesn't contained by any sub project")
+    }
+
+    private static void generateAnnotationProcessorPart(
+            PrintWriter printWriter, Set<String> annotationProcessors, Project project
+    ) {
+        printWriter.println("\tannotation_processors = [")
+        for (String processor : annotationProcessors) {
+            printWriter.println("\t\t'${processor}',")
+        }
+        printWriter.println("\t],")
+        printWriter.println("\tannotation_processor_deps = [")
+        printWriter.println("\t\t'//.okbuck/${project.name}:all-jars',")
+        printWriter.println("\t\t'//.okbuck/${project.name}:all-aars',")
+        printWriter.println("\t\t'//.okbuck/annotation_processor_deps:all-jars',")
+        printWriter.println("\t\t'//.okbuck/annotation_processor_deps:all-aars',")
+        printWriter.println("\t],")
+    }
+
+    private static boolean includeInternalSubProjectResDep(Project internalDep) {
+        int type = AndroidProjectHelper.getSubProjectType(internalDep)
+        return type == AndroidProjectHelper.ANDROID_LIB_PROJECT
+    }
+
     private static String getPathDiff(Project rootProject, Project project) {
-        return project.projectDir.absolutePath.substring(rootProject.projectDir.absolutePath.length())
+        return project.projectDir.absolutePath.substring(
+                rootProject.projectDir.absolutePath.length())
     }
 }

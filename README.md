@@ -5,7 +5,7 @@
 
 OkBuck is a gradle plugin, aiming to help developers utilize the super fast build system: BUCK, based on the existing project with Android Studio + gradle, and keep both build systems work, with less to only **10 lines of configuration**.
 
-[中文版](README-zh.md)
+[Wiki](https://github.com/Piasy/OkBuck/wiki), [中文版](README-zh.md)
 
 ## Why OkBuck?
 Android Studio + Gradle has already been many Android developers' option, and to migrate to buck, there are many works to be done, which are difficult and buggy. OkBuck aims to provide a gradle plugin, which will do these buggy job for you automaticlly after several lines configuration.
@@ -120,6 +120,11 @@ User | Repo
 If you are using OkBuck in your open source project, [send me a e-mail](mailto:xz4215@gmail.com) with your repo url, I'll add your repo in this list.
 
 ## Change log
++  0.2.7: 
+  +  fix overwrite doesn't work bug
+  +  fix bug when Android library module doesn't have res dir
+  +  .buckconfig will ignore .svn dirs
+  +  fix [#6](https://github.com/Piasy/OkBuck/issues/6) again...
 +  0.2.6: fix [#14](https://github.com/Piasy/OkBuck/issues/14)
 +  0.2.5: fix [#15](https://github.com/Piasy/OkBuck/issues/15)
 +  0.2.4: fix [#12](https://github.com/Piasy/OkBuck/issues/12)

@@ -21,35 +21,33 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-package com.github.piasy.okbuck
+
+package com.github.piasy.okbuck.generator
+
+import com.github.piasy.okbuck.generator.configs.DotBuckConfigFile
+import com.github.piasy.okbuck.helper.ProjectHelper
+import org.gradle.api.Project
 
 /**
- * okbuck dsl.
- * */
-public class OkBuckExtension {
-    /**
-     * target: equals to compileSdkVersion in build.gradle.
-     * */
-    String target = "android-23"
+ * Created by Piasy{github.com/Piasy} on 15/10/6.
+ *
+ * X os family generator, Linux, Unix, OS X
+ */
+public final class XDotBuckConfigGenerator extends DotBuckConfigGenerator {
 
-    /**
-     * signConfigName: pick one of multiple signing config defined in build.gradle by name.
-     * */
-    String signConfigName = ""
+    public XDotBuckConfigGenerator(Project rootProject, String target) {
+        super(rootProject, target)
+    }
 
-    /**
-     * keystoreDir: directory OkBuck will use to put generated signing config BUCK.
-     * */
-    String keystoreDir = ".okbuck${File.separator}keystore"
-
-    /**
-     * overwrite: overwrite existing BUCK script or not.
-     * */
-    boolean overwrite = false
-
-    /**
-     * resPackages: set the resources package name for Android library module or application module,
-     * including string resources, color resources, etc, and BuildConfig.java.
-     * */
-    Map<String, String> resPackages
+    @Override
+    public DotBuckConfigFile generate() {
+        Map<String, String> alias = new HashMap<>()
+        for (Project project : mRootProject.subprojects) {
+            if (ProjectHelper.getSubProjectType(
+                    project) == ProjectHelper.ProjectType.AndroidAppProject) {
+                alias.put(project.name, "/${ProjectHelper.getPathDiff(mRootProject, project)}:bin")
+            } //else
+        }
+        return new DotBuckConfigFile(alias, mTarget, Arrays.asList(".git", "**/.svn"))
+    }
 }

@@ -21,35 +21,15 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-package com.github.piasy.okbuck
+
+package com.github.piasy.okbuck.rules.base
 
 /**
- * okbuck dsl.
+ * General presentation for BUCK build rule.
  * */
-public class OkBuckExtension {
+public abstract class AbstractBuckRule {
     /**
-     * target: equals to compileSdkVersion in build.gradle.
+     * Print this rule into the printer.
      * */
-    String target = "android-23"
-
-    /**
-     * signConfigName: pick one of multiple signing config defined in build.gradle by name.
-     * */
-    String signConfigName = ""
-
-    /**
-     * keystoreDir: directory OkBuck will use to put generated signing config BUCK.
-     * */
-    String keystoreDir = ".okbuck${File.separator}keystore"
-
-    /**
-     * overwrite: overwrite existing BUCK script or not.
-     * */
-    boolean overwrite = false
-
-    /**
-     * resPackages: set the resources package name for Android library module or application module,
-     * including string resources, color resources, etc, and BuildConfig.java.
-     * */
-    Map<String, String> resPackages
+    public abstract void print(PrintStream printer)
 }

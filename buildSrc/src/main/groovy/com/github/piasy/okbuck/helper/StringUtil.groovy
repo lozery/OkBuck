@@ -21,35 +21,22 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-package com.github.piasy.okbuck
+
+package com.github.piasy.okbuck.helper
 
 /**
- * okbuck dsl.
+ * String util class.
  * */
-public class OkBuckExtension {
-    /**
-     * target: equals to compileSdkVersion in build.gradle.
-     * */
-    String target = "android-23"
+public final class StringUtil {
+
+    private StringUtil() {
+        // no instance
+    }
 
     /**
-     * signConfigName: pick one of multiple signing config defined in build.gradle by name.
+     * Check whether the input string is null or empty.
      * */
-    String signConfigName = ""
-
-    /**
-     * keystoreDir: directory OkBuck will use to put generated signing config BUCK.
-     * */
-    String keystoreDir = ".okbuck${File.separator}keystore"
-
-    /**
-     * overwrite: overwrite existing BUCK script or not.
-     * */
-    boolean overwrite = false
-
-    /**
-     * resPackages: set the resources package name for Android library module or application module,
-     * including string resources, color resources, etc, and BuildConfig.java.
-     * */
-    Map<String, String> resPackages
+    public static boolean isEmpty(String string) {
+        return string == null || string.empty
+    }
 }

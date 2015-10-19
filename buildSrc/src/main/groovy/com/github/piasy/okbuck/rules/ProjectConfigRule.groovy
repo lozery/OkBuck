@@ -21,35 +21,39 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-package com.github.piasy.okbuck
+
+package com.github.piasy.okbuck.rules
+
+import com.github.piasy.okbuck.rules.base.AbstractBuckRule
+
+import static com.github.piasy.okbuck.helper.CheckUtil.checkNotEmpty
 
 /**
- * okbuck dsl.
+ * project_config()
+ *
+ * TODO full buck support
  * */
-public class OkBuckExtension {
-    /**
-     * target: equals to compileSdkVersion in build.gradle.
-     * */
-    String target = "android-23"
+public final class ProjectConfigRule extends AbstractBuckRule {
+    private final String mSrcTarget
+    private final List<String> mSrcRoots
 
-    /**
-     * signConfigName: pick one of multiple signing config defined in build.gradle by name.
-     * */
-    String signConfigName = ""
+    public ProjectConfigRule(String srcTarget, List<String> srcRoots) {
+        checkNotEmpty(srcTarget, "ProjectConfigRule src_target can't be empty.")
+        mSrcTarget = srcTarget
+        checkNotEmpty(srcRoots, "ProjectConfigRule src_roots can't be empty.")
+        mSrcRoots = srcRoots
+    }
 
-    /**
-     * keystoreDir: directory OkBuck will use to put generated signing config BUCK.
-     * */
-    String keystoreDir = ".okbuck${File.separator}keystore"
-
-    /**
-     * overwrite: overwrite existing BUCK script or not.
-     * */
-    boolean overwrite = false
-
-    /**
-     * resPackages: set the resources package name for Android library module or application module,
-     * including string resources, color resources, etc, and BuildConfig.java.
-     * */
-    Map<String, String> resPackages
+    @Override
+    public final void print(PrintStream printer) {
+        printer.println("project_config(")
+        printer.println("\tsrc_target = '${mSrcTarget}',")
+        printer.println("\tsrc_roots = [")
+        for (String src : mSrcRoots) {
+            printer.println("\t\t'${src}',")
+        }
+        printer.println("\t],")
+        printer.println(")")
+        printer.println()
+    }
 }

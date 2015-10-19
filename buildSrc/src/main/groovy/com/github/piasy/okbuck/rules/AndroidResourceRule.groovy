@@ -21,35 +21,40 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-package com.github.piasy.okbuck
+
+package com.github.piasy.okbuck.rules
+
+import com.github.piasy.okbuck.helper.StringUtil
+import com.github.piasy.okbuck.rules.base.BuckRuleWithDeps
+
+import static com.github.piasy.okbuck.helper.CheckUtil.checkNotEmpty
 
 /**
- * okbuck dsl.
+ * android_resource()
  * */
-public class OkBuckExtension {
-    /**
-     * target: equals to compileSdkVersion in build.gradle.
-     * */
-    String target = "android-23"
+public final class AndroidResourceRule extends BuckRuleWithDeps {
+    private final String mRes
+    private final String mPackage
+    private final String mAssets
 
-    /**
-     * signConfigName: pick one of multiple signing config defined in build.gradle by name.
-     * */
-    String signConfigName = ""
+    public AndroidResourceRule(
+            List<String> visibility, List<String> deps, String res, String packageName,
+            String assets
+    ) {
+        super("android_resource", "res", visibility, deps)
+        checkNotEmpty(res, "AndroidResourceRule res can't be empty.")
+        mRes = res
+        checkNotEmpty(packageName, "AndroidResourceRule package can't be empty.")
+        mPackage = packageName
+        mAssets = assets
+    }
 
-    /**
-     * keystoreDir: directory OkBuck will use to put generated signing config BUCK.
-     * */
-    String keystoreDir = ".okbuck${File.separator}keystore"
-
-    /**
-     * overwrite: overwrite existing BUCK script or not.
-     * */
-    boolean overwrite = false
-
-    /**
-     * resPackages: set the resources package name for Android library module or application module,
-     * including string resources, color resources, etc, and BuildConfig.java.
-     * */
-    Map<String, String> resPackages
+    @Override
+    protected final void printSpecificPart(PrintStream printer) {
+        printer.println("\tres = '${mRes}',")
+        printer.println("\tpackage = '${mPackage}',")
+        if (!StringUtil.isEmpty(mAssets)) {
+            printer.println("\tassets = '${mAssets}',")
+        }
+    }
 }

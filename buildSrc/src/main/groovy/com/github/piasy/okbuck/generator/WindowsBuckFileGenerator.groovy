@@ -21,35 +21,31 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-package com.github.piasy.okbuck
+
+package com.github.piasy.okbuck.generator
+
+import com.github.piasy.okbuck.dependency.DependencyAnalyzer
+import com.github.piasy.okbuck.generator.configs.BUCKFile
+import org.gradle.api.Project
 
 /**
- * okbuck dsl.
- * */
-public class OkBuckExtension {
-    /**
-     * target: equals to compileSdkVersion in build.gradle.
-     * */
-    String target = "android-23"
+ * Created by Piasy{github.com/Piasy} on 15/10/6.
+ *
+ * Windows os family generator.
+ */
+public final class WindowsBuckFileGenerator extends BuckFileGenerator {
 
-    /**
-     * signConfigName: pick one of multiple signing config defined in build.gradle by name.
-     * */
-    String signConfigName = ""
+    public WindowsBuckFileGenerator(
+            Project rootProject, DependencyAnalyzer dependencyAnalyzer, File okBuckDir,
+            Map<String, String> resPackages, String keystoreDir, String signConfigName,
+            String buildVariant
+    ) {
+        super(rootProject, dependencyAnalyzer, okBuckDir, resPackages, keystoreDir, signConfigName,
+                buildVariant)
+    }
 
-    /**
-     * keystoreDir: directory OkBuck will use to put generated signing config BUCK.
-     * */
-    String keystoreDir = ".okbuck${File.separator}keystore"
-
-    /**
-     * overwrite: overwrite existing BUCK script or not.
-     * */
-    boolean overwrite = false
-
-    /**
-     * resPackages: set the resources package name for Android library module or application module,
-     * including string resources, color resources, etc, and BuildConfig.java.
-     * */
-    Map<String, String> resPackages
+    @Override
+    public Map<Project, BUCKFile> generate() {
+        throw new UnsupportedOperationException("Windows os family currently not supported!")
+    }
 }

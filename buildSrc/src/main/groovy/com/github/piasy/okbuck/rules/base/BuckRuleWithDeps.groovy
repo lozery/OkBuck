@@ -21,35 +21,39 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-package com.github.piasy.okbuck
+
+package com.github.piasy.okbuck.rules.base
+
+import static com.github.piasy.okbuck.helper.CheckUtil.checkNotNull
 
 /**
- * okbuck dsl.
+ * General presentation for BUCK build rule with deps part.
  * */
-public class OkBuckExtension {
-    /**
-     * target: equals to compileSdkVersion in build.gradle.
-     * */
-    String target = "android-23"
+public abstract class BuckRuleWithDeps extends BuckRule {
+    private final List<String> mDeps
+
+    protected BuckRuleWithDeps(
+            String ruleType, String name, List<String> visibility, List<String> deps
+    ) {
+        super(ruleType, name, visibility)
+        checkNotNull(deps, "BuckRuleWithDeps deps must be non-null.")
+        mDeps = deps
+    }
+
+    @Override
+    protected final void printDetail(PrintStream printer) {
+        printSpecificPart(printer)
+        if (!mDeps.empty) {
+            printer.println("\tdeps = [")
+            for (String dep : mDeps) {
+                printer.println("\t\t'${dep}',")
+            }
+            printer.println("\t],")
+        }
+    }
 
     /**
-     * signConfigName: pick one of multiple signing config defined in build.gradle by name.
+     * print the rule specific part
      * */
-    String signConfigName = ""
-
-    /**
-     * keystoreDir: directory OkBuck will use to put generated signing config BUCK.
-     * */
-    String keystoreDir = ".okbuck${File.separator}keystore"
-
-    /**
-     * overwrite: overwrite existing BUCK script or not.
-     * */
-    boolean overwrite = false
-
-    /**
-     * resPackages: set the resources package name for Android library module or application module,
-     * including string resources, color resources, etc, and BuildConfig.java.
-     * */
-    Map<String, String> resPackages
+    protected abstract void printSpecificPart(PrintStream printer)
 }

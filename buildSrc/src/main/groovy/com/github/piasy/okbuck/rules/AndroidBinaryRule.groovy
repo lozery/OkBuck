@@ -22,28 +22,35 @@
  * SOFTWARE.
  */
 
-apply plugin: 'com.android.library'
+package com.github.piasy.okbuck.rules
 
-android {
-    compileSdkVersion 23
-    buildToolsVersion "23.0.1"
+import com.github.piasy.okbuck.rules.base.BuckRuleWithDeps
 
-    defaultConfig {
-        minSdkVersion 15
-        targetSdkVersion 23
-        versionCode 1
-        versionName "1.0"
+import static com.github.piasy.okbuck.helper.CheckUtil.checkNotEmpty
+
+/**
+ * android_binary()
+ *
+ * TODO full buck support
+ * */
+public final class AndroidBinaryRule extends BuckRuleWithDeps {
+    private final String mManifest
+    private final String mKeystore
+
+    public AndroidBinaryRule(
+            List<String> visibility, List<String> deps, String manifest, String keystore
+    ) {
+        super("android_binary", "bin", visibility, deps)
+
+        checkNotEmpty(manifest, "AndroidBinaryRule manifest must be non-null.")
+        mManifest = manifest
+        checkNotEmpty(keystore, "AndroidBinaryRule keystore must be non-null.")
+        mKeystore = keystore
     }
-    buildTypes {
-        release {
-            minifyEnabled false
-            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
-        }
+
+    @Override
+    protected final void printSpecificPart(PrintStream printer) {
+        printer.println("\tmanifest = '${mManifest}',")
+        printer.println("\tkeystore = '${mKeystore}',")
     }
-}
-
-dependencies {
-    testCompile 'junit:junit:4.12'
-
-    compile project(":common")
 }

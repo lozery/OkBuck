@@ -22,34 +22,39 @@
  * SOFTWARE.
  */
 
-apply plugin: 'com.android.library'
-apply plugin: 'com.neenbedankt.android-apt'
+package com.github.piasy.okbuck.rules
 
-android {
-    compileSdkVersion 23
-    buildToolsVersion "23.0.1"
+import com.github.piasy.okbuck.rules.base.BuckRule
 
-    defaultConfig {
-        minSdkVersion 15
-        targetSdkVersion 23
-        versionCode 1
-        versionName "1.0"
+import static com.github.piasy.okbuck.helper.CheckUtil.checkNotEmpty
+import static com.github.piasy.okbuck.helper.CheckUtil.checkNotNull
 
-        buildConfigField "boolean", "DUMMY_CONFIG", "true"
+/**
+ * android_build_config()
+ * */
+public final class AndroidBuildConfigRule extends BuckRule {
+    private final String mPackage
+    private final List<String> mValues
+
+    public AndroidBuildConfigRule(
+            List<String> visibility, String packageName, List<String> values
+    ) {
+        super("android_build_config", "build_config", visibility)
+        checkNotEmpty(packageName, "AndroidBuildConfigRule package can't be empty.")
+        mPackage = packageName
+        checkNotNull(values, "AndroidBuildConfigRule values must be non-null.")
+        mValues = values
     }
-    buildTypes {
-        release {
-            minifyEnabled false
-            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+
+    @Override
+    protected final void printDetail(PrintStream printer) {
+        printer.println("\tpackage = '${mPackage}',")
+        if (!mValues.empty) {
+            printer.println("\tvalues = [")
+            for (String value : mValues) {
+                printer.println("\t\t'${value}',")
+            }
+            printer.println("\t],")
         }
     }
-}
-
-dependencies {
-    testCompile 'junit:junit:4.12'
-
-    provided 'com.google.dagger:dagger-compiler:2.0.1'
-    compile project(':libraries:javalibrary')
-    compile project(':libraries:common')
-    compile 'com.pushtorefresh.storio:sqlite:1.3.0'
 }

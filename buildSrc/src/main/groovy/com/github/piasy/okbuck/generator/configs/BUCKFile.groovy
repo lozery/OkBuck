@@ -21,35 +21,28 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-package com.github.piasy.okbuck
+
+package com.github.piasy.okbuck.generator.configs
+
+import com.github.piasy.okbuck.rules.base.AbstractBuckRule
+
+import static com.github.piasy.okbuck.helper.CheckUtil.checkNotEmpty
 
 /**
- * okbuck dsl.
+ * BUCK file.
  * */
-public class OkBuckExtension {
-    /**
-     * target: equals to compileSdkVersion in build.gradle.
-     * */
-    String target = "android-23"
+public final class BUCKFile extends BuckConfigFile {
+    private final List<AbstractBuckRule> mRules
 
-    /**
-     * signConfigName: pick one of multiple signing config defined in build.gradle by name.
-     * */
-    String signConfigName = ""
+    public BUCKFile(List<AbstractBuckRule> rules) {
+        checkNotEmpty(rules, "BUCKFile rules can't be empty.")
+        mRules = rules
+    }
 
-    /**
-     * keystoreDir: directory OkBuck will use to put generated signing config BUCK.
-     * */
-    String keystoreDir = ".okbuck${File.separator}keystore"
-
-    /**
-     * overwrite: overwrite existing BUCK script or not.
-     * */
-    boolean overwrite = false
-
-    /**
-     * resPackages: set the resources package name for Android library module or application module,
-     * including string resources, color resources, etc, and BuildConfig.java.
-     * */
-    Map<String, String> resPackages
+    @Override
+    public final void print(PrintStream printer) {
+        for (AbstractBuckRule rule : mRules) {
+            rule.print(printer)
+        }
+    }
 }
